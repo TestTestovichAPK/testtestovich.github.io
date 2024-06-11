@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Frequency Display and Inductance Calculator</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+        }
+        button {
+            margin: 5px;
+            padding: 10px;
+            font-size: 16px;
+        }
+        #frequency, #inductance {
+            font-size: 24px;
+            margin-top: 20px;
+        }
+        #calculator {
+            margin-top: 20px;
+        }
+        input, select {
+            padding: 5px;
+            font-size: 16px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Audio Frequency Display and Inductance Calculator</h1>
+    <button id="startButton">Start</button>
+    <button id="stopButton">Stop</button>
+    <div id="frequency">Frequency: 0 Hz</div>
+
+    <div id="calculator">
+        <h2>Calculate Inductance</h2>
+        <label for="capacitance">Capacitance: </label>
+        <input type="number" id="capacitance" step="0.000000001" placeholder="Enter capacitance">
+        <select id="capacitanceUnit">
+            <option value="1e-6">μF (Microfarads)</option>
+            <option value="1e-9">nF (Nanofarads)</option>
+        </select>
+        <button id="calculateButton">Calculate Inductance</button>
+        <div id="inductance">Inductance: N/A</div>
+    </div>
+
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        let running = false;
+        let currentFrequency = 0;
+
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const frequencyDisplay = document.getElementById('frequency');
+        const calculateButton = document.getElementById('calculateButton');
+        const capacitanceInput = document.getElementById('capacitance');
+        const capacitanceUnit = document.getElementById('capacitanceUnit');
+        const inductanceDisplay = document.getElementById('inductance');
+
+        const startAudio = async () => {
+            if (running) return;
+
+            running = true;
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+
+                microphone = audioContext.createMediaStreamSource(stream);
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                microphone.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+
+                javascriptNode.onaudioprocess = () => {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    let maxIndex = 0;
+                    for (let i = 1; i < array.length; i++) {
+                        if (array[i] > array[maxIndex]) {
+                            maxIndex = i;
+                        }
+                    }
+                    currentFrequency = maxIndex * audioContext.sampleRate / analyser.fftSize;
+                    frequencyDisplay.textContent = `Frequency: ${Math.round(currentFrequency)} Hz`;
+                };
+            } catch (err) {
+                console.error('Error accessing microphone: ', err);
+                alert('Error accessing microphone. Please ensure you have granted microphone permissions.');
+                running = false;
+            }
+        };
+
+        const stopAudio = () => {
+            if (!running) return;
+
+            running = false;
+
+            if (javascriptNode) javascriptNode.disconnect();
+            if (microphone) microphone.disconnect();
+            if (audioContext) audioContext.close();
+
+            frequencyDisplay.textContent = 'Frequency: 0 Hz';
+            currentFrequency = 0;
+        };
+
+        const calculateInductance = () => {
+            const capacitance = parseFloat(capacitanceInput.value);
+            const unitFactor = parseFloat(capacitanceUnit.value);
+            if (isNaN(capacitance) || capacitance <= 0) {
+                alert('Please enter a valid capacitance value.');
+                return;
+            }
+            if (currentFrequency <= 0) {
+                alert('Frequency must be greater than zero to calculate inductance.');
+                return;
+            }
+            const capacitanceInFarads = capacitance * unitFactor;
+            const inductance = 1 / (4 * Math.PI * Math.PI * capacitanceInFarads * currentFrequency * currentFrequency);
+            inductanceDisplay.textContent = `Inductance: ${inductance.toExponential(3)} H`;
+        };
+
+        startButton.addEventListener('click', startAudio);
+        stopButton.addEventListener('click', stopAudio);
+        calculateButton.addEventListener('click', calculateInductance);
+    </script>
+</body>
+</html>
